@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d/prod:/etc/nginx/conf.d/prod:ro
+      - ./frontend/build:/usr/share/nginx/html:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - app-network
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - ./frontend/.env
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - app-network
+    ports:
+      - "3000:3000"
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/code
+      - models_cache:/models_cache
+    networks:
+      - app-network
+    ports:
+      - "8000:8000"
+    command: bash -lc "python -m src.preload && uvicorn src.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      - ENVIRONMENT=production
+      - HF_HOME=/models_cache/huggingface
+      - TRANSFORMERS_CACHE=/models_cache/huggingface/transformers
+      - SENTENCE_TRANSFORMERS_HOME=/models_cache/sentence-transformers
+      - TORCH_HOME=/models_cache/torch
+    env_file:
+      - ./backend/.env
+
+volumes:
+  postgres_prod_data:
+  models_cache:
+
+networks:
+  app-network:
+    external: true
